@@ -1,11 +1,14 @@
 # ! Python 3.8 or upper required
 
-#### TODO -------------- Check if out of board
-
 from enum import Enum
 from random import randint, choice
 from time import sleep
 from itertools import zip_longest
+
+INTERVAL = 0
+DEBUG = False
+DRAW = False
+TRAINMODE = True
 
 "●○◦⬤◯〇⦿·○〇〇◯ ⃝ ⬤ 🔴🔵〇●○"
 
@@ -33,6 +36,20 @@ class Dir(Enum):
     left = XY(-1, 0)
     right = XY(1, 0)
 
+def val2xy(val):
+    if val == 0: return Dir.up.value()
+    elif val == 1: return Dir.down.value()
+    elif val == 2: return Dir.left.value()
+    elif val == 3: return Dir.right.value()
+    else: raise ValueError
+
+def xy2str(dir):
+    if dir == Dir.up.value(): return 'U'
+    elif dir == Dir.down.value(): return 'D'
+    elif dir == Dir.left.value(): return 'L'
+    elif dir == Dir.right.value(): return 'R'
+    else: raise ValueError
+
 class Color(Enum):
     black = 30
     red = 31
@@ -51,15 +68,16 @@ class Color(Enum):
     cyann = 96
     whitee = 97
 
-teams = 2
-players = 3
+TEAMS = 2
+PLAYERS = 3
+XLENGTH = 15 if TRAINMODE else 40
+YLENGTH = 17 if TRAINMODE else 30
+AREA = XLENGTH * YLENGTH
+MAXTURN = 300 if TRAINMODE else 600
 A = 0
 B = 1
-xLength = 40
-yLength = 30
-area = xLength * yLength
-colorA = Color.redd
-colorB = Color.bluee
+COLORA = Color.redd
+COLORB = Color.bluee
 
 def norm(a):
     if a > 0: return 1
@@ -71,21 +89,21 @@ def name(team):
     elif team==B: return 'B'
 
 def inBoard(xy):
-    return xy.x >= 0 and xy.x < xLength and xy.y >= 0 and xy.y < yLength
+    return xy.x >= 0 and xy.x < XLENGTH and xy.y >= 0 and xy.y < YLENGTH
 
 def other(team):
     if team==A: return B
     elif team==B: return A
 
 def mirror(xy):
-    return XY(xLength-xy.x-1, yLength-xy.y-1)
+    return XY(XLENGTH-xy.x-1, YLENGTH-xy.y-1)
 
 def color(s, c=Color.white, b=Color.white):
 
-    if c==A: c = colorA
-    elif c==B: c = colorB
-    if b==A: b = colorA
-    elif b==B: b = colorB
+    if c==A: c = COLORA
+    elif c==B: c = COLORB
+    if b==A: b = COLORA
+    elif b==B: b = COLORB
 
     fore = '\033[{}m'.format(str(c.value))
     back = '\033[{}m'.format(str(b.value+10))
@@ -94,10 +112,10 @@ def color(s, c=Color.white, b=Color.white):
 
 class Map():
     def __init__(self, generator):
-        self.map = [[generator() for _ in range(yLength)] for _ in range(xLength)]
+        self.map = [[generator() for _ in range(YLENGTH)] for _ in range(XLENGTH)]
     def __iter__(self):
-        for x in range(xLength):
-            for y in range(yLength):
+        for x in range(XLENGTH):
+            for y in range(YLENGTH):
                 yield XY(x, y), self.get(XY(x, y))
     def __str__(self):
         # return '\n'.join(reversed(list(map(lambda line: ''.join(list(map(lambda _: str(_),line))), self.map))))
@@ -139,7 +157,7 @@ class Piece:
     def respawn(self, xy):
         if not self.dead: raise Exception('Piece alive already.')
         if self.lives==0: 
-            print("Invalid action: tried to respawn piece {}{} with no lives left.".format(name(self.team), str(self.id)))
+            if DEBUG: print("Invalid action: tried to respawn piece {}{} with no lives left.".format(name(self.team), str(self.id)))
             return
         self.dead = False
         self.xy = xy
@@ -180,7 +198,7 @@ class Command:
 
 class Things:
     def __init__(self, cList):
-        self.things = [[None for i in range(players)] for j in range(teams)]
+        self.things = [[None for i in range(PLAYERS)] for j in range(TEAMS)]
         for c in cList:
             self.set(c)
     def get(self, thing):
@@ -189,8 +207,8 @@ class Things:
         if thing is None: return
         self.things[thing.team][thing.id] = thing
     def __iter__(self):
-        for team in range(teams):
-            for id in range(players):
+        for team in range(TEAMS):
+            for id in range(PLAYERS):
                 if thing:=self.get(Entity(team, id)):
                     yield thing
 
@@ -202,7 +220,13 @@ class Board:
             for j in range(3):
                 self.set(Camp(A), XY(i,j))
                 self.set(Camp(B), mirror(XY(i,j)))
+        
         self.pieces = Things([
+            Piece(A, 1, XY(3, 2)),
+            Piece(B, 1, mirror(XY(3, 2)))
+        ]) \
+        if TRAINMODE else \
+        Things([
             Piece(A, 0, XY(3, 0)),
             Piece(A, 1, XY(2, 2)),
             Piece(A, 2, XY(3, 2)),
@@ -211,76 +235,19 @@ class Board:
             Piece(B, 2, mirror(XY(3, 2)))
         ])
 
-        # commandsList = [
-        #         Things([Command(A, 2, CType.move, XY(1,0))]),
-        #         Things([Command(A, 2, CType.move, XY(1,0))]),
-        #         Things([Command(A, 2, CType.move, XY(0,1))]),
-        #         Things([Command(A, 2, CType.move, XY(0,1))]),
-        #         Things([Command(A, 2, CType.move, XY(-1,0))]),
-        #         Things([Command(A, 2, CType.move, XY(-1,0))]),
-        #         Things([Command(A, 2, CType.move, XY(0,-1))]),
-        #         Things([Command(A, 2, CType.move, XY(-1,0))]),
-        #         Things([Command(A, 2, CType.move, XY(-1,0))]),
-        # ]
-
-        # commandsList = \
-        #     [Things([Command(A, 2, CType.move, XY(1,0))])]*32 \
-        #     + [Things([Command(A, 2, CType.move, XY(0,1))])]*28 \
-        #     + [Things([Command(A, 2, CType.move, XY(-1,0))])]*32 \
-        #     + [Things([Command(A, 2, CType.move, XY(0,-1))])]*28 \
-        
-        a0 = \
-            [Command(A, 0, CType.move, XY(1,0))]*35 \
-                
-        a1 = \
-            [Command(A, 1, CType.move, XY(0,1))]*23 \
-            + [Command(A, 1, CType.move, XY(-1,0))]*2 \
-            + [Command(A, 1, CType.move, XY(0,-1))]*20 \
-
-        a2 = \
-            [Command(A, 2, CType.move, XY(1,0))]*27 \
-            + [Command(A, 2, CType.move, XY(0,1))]*24 \
-            + [Command(A, 2, CType.move, XY(-1,0))]*27 \
-            + [Command(A, 2, CType.move, XY(0,-1))]*24 \
-        
-        b0 = \
-            [Command(B, 0, CType.move, XY(-1,0))]*34 \
-            + [Command(B, 0, CType.move, XY(0,-1))]*27 \
-
-        b1 = \
-            [Command(B, 1, CType.move, XY(0,-1))]*10 \
-            + [Command(B, 1, CType.move, XY(-1,0))]*5 \
-            + [Command(B, 1, CType.move, XY(0,-1))]*20 \
-        
-        b2 = []
-        # b2 = \
-        #     [Things([Command(B, 2, CType.move, XY(1,0))])]*32 \
-        #     + [Things([Command(B, 2, CType.move, XY(0,1))])]*28 \
-        #     + [Things([Command(B, 2, CType.move, XY(-1,0))])]*32 \
-        #     + [Things([Command(B, 2, CType.move, XY(0,-1))])]*28 \
-        
-        commandsList = list(map(Things, zip_longest(a0, a1, a2, b0, b1, b2)))
-
-        print(self)
-        for commands in commandsList:
-            if commands is not None:
-                sleep(0.1)
-                self.move(commands)
-                print(self)
-                winner = self.winner()
-                if self.winner() is not None:
-                    print("Team {} won!".format(name(winner)))
-                    break
+        self.statistics = {
+            'died': { A: 0, B: 0 },
+            'taken': { A: 0, B: 0 }
+        }
     
     def __iter__(self):
         return self.map.__iter__()
-        
 
     def __str__(self):
         lines = []
-        for i in range(xLength):
+        for i in range(XLENGTH):
             line = []
-            for j in range(yLength):
+            for j in range(YLENGTH):
                 # s += str(i) + ", " +  str(j)
                 line += [str(self.get(XY(i,j)))]
             lines += [line]
@@ -288,15 +255,12 @@ class Board:
         for p in self.pieces:
             if not p.dead:
                 lines[p.xy.x][p.xy.y] = str(p)
-        
-        # for i in range(xLength):
-        #     for j in range(yLength):
-        #         s += lines[i][j]
-        #     s += 
 
-        # print(lines)
-        # return '\n'.join(reversed(list(map(lambda line: ''.join(line), lines))))
         return '\n'+'\n'.join(list(map(lambda line: ''.join(line), lines)))
+    
+    def progress(self):
+        origin = MAXTURN - 50
+        return max(0, (self.turn-origin) / (MAXTURN - origin))
 
     def set(self, a, xy):
         self.map.set(a, xy)
@@ -304,18 +268,9 @@ class Board:
     def get(self, xy):
         return self.map.get(xy)
 
-    def move(self, commands):
-        # commands = Things([
-        #     Command(A, 0, Dir.up),
-        #     Command(A, 1, Dir.up),
-        #     Command(A, 2, Dir.up),
-        #     Command(B, 0, Dir.up),
-        #     Command(B, 1, Dir.up),
-        #     Command(B, 2, Dir.up)
-        # ])
-
+    def move(self):
         # Move and respawn pieces
-        for c in commands:
+        for c in self.commands:
             p = self.pieces.get(c)
             if c.type==CType.wait:
                 continue
@@ -339,42 +294,35 @@ class Board:
         for p1 in self.pieces:
             if not p1.dead:
                 if not inBoard(p1.xy):
-                    print("Adding {} to toDie because it's out of board.".format(str(p1)))
+                    if DEBUG: print("Adding {} to toDie because it's out of board.".format(str(p1)))
                     toDie += [Entity(p1.team, p1.id)]
                 elif isinstance(c:=self.get(p1.xy), Camp) and c.team!=p1.team:
-                    print("Adding {} to toDie because it stepped enemy's camp.".format(str(p1)))
+                    if DEBUG: print("Adding {} to toDie because it stepped enemy's camp.".format(str(p1)))
                     toDie += [Entity(p1.team, p1.id)]
                 elif isinstance(d:=self.get(p1.xy), Dot):
-                    print("Adding {} to toDie because its dot got stepped.".format(str(p1)))
-                    print("Dot stepped: {}".format(str(p1.xy)))
+                    if DEBUG: print("Adding {} to toDie because its dot got stepped.".format(str(p1)))
+                    if DEBUG: print("Dot stepped: {}".format(str(p1.xy)))
                     toDie += [Entity(d.team, d.id)]
+                    self.statistics['taken'][p1.team] += 1 if p1.team!=d.team else -1
                 
                 for p2 in self.pieces:
                     if p1 < p2 and not p2.dead and p1.xy==p2.xy:
-                        print("{}{} and {}{} are in the same position").format(str(p1.team), str(p1.id), str(p2.team), str(p2.id))
+                        if DEBUG: print("{}{} and {}{} are in the same position").format(str(p1.team), str(p1.id), str(p2.team), str(p2.id))
                         toDie += [Entity(p1.team, p1.id), Entity(p2.team, p2.id)]
         
-        print(toDie)
+        if DEBUG: print(toDie)
         for td in toDie:
             self.pieces.get(td).kill()
             for xy, d in self:
                 if isinstance(d, Dot) and d.team==td.team and d.id==td.id:
-                    self.set(Empty(), xy)
-                    
+                    self.set(Empty(), xy)        
         
         # Make new camps
         for p in self.pieces:
             if not p.dead:
                 if isinstance(camp:=self.get(p.xy),Camp):
                     if not camp.team==p.team: raise Exception("Piece is on camp but their teams do not match.")
-                    self.fill(p)
-
-        # self.checked = [[False for _ in range(yLength)] for _ in range(xLength)]
-
-        # for xy, e in self:
-        #     if isinstance(e,Empty):
-        #             self.flood(xy)
-                
+                    self.fill(p)                
                     
     def fill(self, p):
         self.walls = Map(lambda: False)
@@ -436,49 +384,108 @@ class Board:
                         q.append(u)
         
         return valid, area
-        
-    # def expandFrom(self, xy):
-    #     if not inBoard(xy):
-    #         return False, []
-    #     if self.walls.get(xy):
-    #         return True, []
-    #     if self.checkeds.get(xy):
-    #         return True, []
-    #     else:
-    #         self.checkeds.set(True, xy)
-    #         valid = True
-    #         area = [xy]
-    #         for dir in Dir:
-    #             newxy = xy+dir.value
-    #             newValid, newArea = self.expandFrom(newxy)
-    #             valid = valid and newValid
-    #             area += newArea
-    #         return valid, area
     
     def winner(self):
         camps = { A:0, B:0 }
 
-        for i in range(xLength):
-            for j in range(yLength):
+        for i in range(XLENGTH):
+            for j in range(YLENGTH):
                 if isinstance(c:=self.get(XY(i,j)), Camp):
                     camps[c.team] += 1
+        diff = abs(camps[A]-camps[B])
 
         # print(self.turn, camps)
 
         for team, count in camps.items():
-            if count >= area/2: return team
+            if count >= AREA/2: return team, diff
         
         alive = { A:False, B: False }
         for p in self.pieces:
             if p.lives > 0:
                 alive[p.team] = True
-        if not alive[A]: return B
-        if not alive[B]: return A
+        if not alive[A]: return B, AREA/4
+        if not alive[B]: return A, AREA/4
         
-        if self.turn >= 600:
-            return A if camps[A] > camps[B] else B
+        if self.turn >= MAXTURN:
+            return A, diff if camps[A] > camps[B] else B, diff
 
         return None
 
 
-board = Board()
+
+
+# board = Board()
+
+# commands = Things([
+#     Command(A, 0, Dir.up),
+#     Command(A, 1, Dir.up),
+#     Command(A, 2, Dir.up),
+#     Command(B, 0, Dir.up),
+#     Command(B, 1, Dir.up),
+#     Command(B, 2, Dir.up)
+# ])
+
+
+
+# # commandsList = [
+#         #         Things([Command(A, 2, CType.move, XY(1,0))]),
+#         #         Things([Command(A, 2, CType.move, XY(1,0))]),
+#         #         Things([Command(A, 2, CType.move, XY(0,1))]),
+#         #         Things([Command(A, 2, CType.move, XY(0,1))]),
+#         #         Things([Command(A, 2, CType.move, XY(-1,0))]),
+#         #         Things([Command(A, 2, CType.move, XY(-1,0))]),
+#         #         Things([Command(A, 2, CType.move, XY(0,-1))]),
+#         #         Things([Command(A, 2, CType.move, XY(-1,0))]),
+#         #         Things([Command(A, 2, CType.move, XY(-1,0))]),
+#         # ]
+
+#         # commandsList = \
+#         #     [Things([Command(A, 2, CType.move, XY(1,0))])]*32 \
+#         #     + [Things([Command(A, 2, CType.move, XY(0,1))])]*28 \
+#         #     + [Things([Command(A, 2, CType.move, XY(-1,0))])]*32 \
+#         #     + [Things([Command(A, 2, CType.move, XY(0,-1))])]*28 \
+        
+#         a0 = \
+#             [Command(A, 0, CType.move, XY(1,0))]*35 \
+                
+#         a1 = \
+#             [Command(A, 1, CType.move, XY(0,1))]*23 \
+#             + [Command(A, 1, CType.move, XY(-1,0))]*2 \
+#             + [Command(A, 1, CType.move, XY(0,-1))]*20 \
+
+#         a2 = \
+#             [Command(A, 2, CType.move, XY(1,0))]*27 \
+#             + [Command(A, 2, CType.move, XY(0,1))]*24 \
+#             + [Command(A, 2, CType.move, XY(-1,0))]*27 \
+#             + [Command(A, 2, CType.move, XY(0,-1))]*24 \
+        
+#         b0 = \
+#             [Command(B, 0, CType.move, XY(-1,0))]*34 \
+#             + [Command(B, 0, CType.move, XY(0,-1))]*27 \
+
+#         b1 = \
+#             [Command(B, 1, CType.move, XY(0,-1))]*10 \
+#             + [Command(B, 1, CType.move, XY(-1,0))]*5 \
+#             + [Command(B, 1, CType.move, XY(0,-1))]*20 \
+        
+#         b2 = []
+#         # b2 = \
+#         #     [Things([Command(B, 2, CType.move, XY(1,0))])]*32 \
+#         #     + [Things([Command(B, 2, CType.move, XY(0,1))])]*28 \
+#         #     + [Things([Command(B, 2, CType.move, XY(-1,0))])]*32 \
+#         #     + [Things([Command(B, 2, CType.move, XY(0,-1))])]*28 \
+
+# commandsList = list(map(Things, zip_longest(a0, a1, a2, b0, b1, b2)))
+
+
+        # if draw: print(self)
+        # for commands in commandsList:
+        #     if commands is not None:
+        #         if interval: sleep(interval)
+        #         if debug: print("Turn {}".format(str(self.turn)))
+        #         self.move(commands)
+        #         if draw: print(self)
+        #         winner = self.winner()
+        #         if self.winner() is not None:
+        #             if debug: print("Team {} won!".format(name(winner)))
+        #             break
