@@ -9,28 +9,30 @@ import torch.nn.functional as F
 cuda_ok = torch.cuda.is_available()
 test = not __file__ in ['ai1.py', 'ai2.py'] and __name__ == "__main__"
 
+DEVICE = 'cpu'
 RANGE = 10
+E2E = RANGE*2 + 1
 
 def around(a):
     return list(range(a-RANGE, a+RANGE+1))
 
 class KaPo21Net(nn.Module):
     # input: teamCamp, myPath, team, teamPath, enemyCamp, enemy, enemyPath, outBoard, turn
-    def __init__(self, range=RANGE):
-        self.size = range
+    def __init__(self, size=E2E):
+        self.size = size
         
         super(KaPo21Net, self).__init__()
-        self.conv1a = nn.Conv2d(8, 8, kernel_size=3, padding=1, bias=False)
-        self.conv1b = nn.Conv2d(8, 4, kernel_size=5, padding=2, bias=False)
-        self.conv1c = nn.Conv2d(8, 2, kernel_size=7, padding=3, bias=False)
+        self.conv1a = nn.Conv2d(9, 8, kernel_size=3, padding=1, bias=False)
+        self.conv1b = nn.Conv2d(9, 4, kernel_size=5, padding=2, bias=False)
+        self.conv1c = nn.Conv2d(9, 2, kernel_size=7, padding=3, bias=False)
         self.bn1 = nn.BatchNorm2d(16)
         self.relu = nn.ReLU(inplace=True)
         self.conv2 = nn.Conv2d(16, 3, kernel_size=1, bias=False)
         self.bn2 = nn.BatchNorm2d(3)
         self.lnr = nn.Linear(3*self.size*self.size, 4)
         
-    def forward(self, batch):
-        x = batch.view(-1, 3, self.size, self.size)
+    def forward(self, x):
+        x = x.view(-1, 9, self.size, self.size)
         xa = self.relu(self.conv1a(x))
         xb = self.relu(self.conv1b(x))
         xc = self.relu(self.conv1b(x))
@@ -65,13 +67,21 @@ class Player():
                     pieces += [p]
         commands = []
         for p in pieces:
-            turn = [[board.progress()] * RANGE] * RANGE
-            teamCamp, myPath, team, teamPath, enemyCamp, enemy, enemyPath, outBoard = [[0 for _ in RANGE] for _ in RANGE]
+            turn = [[board.progress()] * E2E] * E2E
+            teamCamp = [[0 for _ in range(E2E)] for _ in range(E2E)]
+            myPath = [[0 for _ in range(E2E)] for _ in range(E2E)]
+            team = [[0 for _ in range(E2E)] for _ in range(E2E)]
+            teamPath = [[0 for _ in range(E2E)] for _ in range(E2E)]
+            enemyCamp = [[0 for _ in range(E2E)] for _ in range(E2E)]
+            enemy = [[0 for _ in range(E2E)] for _ in range(E2E)]
+            enemyPath = [[0 for _ in range(E2E)] for _ in range(E2E)]
+            outBoard = [[0 for _ in range(E2E)] for _ in range(E2E)]
             for x in around(p.xy.x):
                 for y in around(p.xy.y):
                     origin = p.xy - XY(RANGE,RANGE)
                     raw = XY(x,y)
                     trans = raw - origin
+                    # print("Origin: {}, raw: {}, trans: {}".format(str(origin), str(raw), str(trans)))
                     if inBoard(raw):
                         e = board.get(raw)
                         if isinstance(e, Camp):
@@ -96,7 +106,7 @@ class Player():
 
                     else:
                         outBoard[trans.x][trans.y] = 1
-            inputt = torch.tensor([teamCamp, myPath, team, teamPath, enemyCamp, enemy, enemyPath, outBoard, turn])
+            inputt = torch.tensor([teamCamp, myPath, team, teamPath, enemyCamp, enemy, enemyPath, outBoard, turn], dtype=torch.float)
             if self.gpu:
                 inputt = inputt.to('cuda')
             with torch.no_grad():
@@ -112,7 +122,7 @@ class Player():
                 if isinstance(e, Camp) and e.team==self.team:
                     campNext = emptyNext = False
                     for dir in Dir:
-                        eNext = board.get(xy + dir.value())
+                        eNext = board.get(xy + dir.value)
                         if isinstance(eNext, Camp) and eNext.team==self.team:
                             campNext = True
                         elif isinstance(eNext, Empty):

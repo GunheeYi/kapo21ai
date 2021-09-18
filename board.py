@@ -37,17 +37,17 @@ class Dir(Enum):
     right = XY(1, 0)
 
 def val2xy(val):
-    if val == 0: return Dir.up.value()
-    elif val == 1: return Dir.down.value()
-    elif val == 2: return Dir.left.value()
-    elif val == 3: return Dir.right.value()
+    if val == 0: return Dir.up.value
+    elif val == 1: return Dir.down.value
+    elif val == 2: return Dir.left.value
+    elif val == 3: return Dir.right.value
     else: raise ValueError
 
 def xy2str(dir):
-    if dir == Dir.up.value(): return 'U'
-    elif dir == Dir.down.value(): return 'D'
-    elif dir == Dir.left.value(): return 'L'
-    elif dir == Dir.right.value(): return 'R'
+    if dir == Dir.up.value: return 'U'
+    elif dir == Dir.down.value: return 'D'
+    elif dir == Dir.left.value: return 'L'
+    elif dir == Dir.right.value: return 'R'
     else: raise ValueError
 
 class Color(Enum):
@@ -69,7 +69,8 @@ class Color(Enum):
     whitee = 97
 
 TEAMS = 2
-PLAYERS = 3
+PLAYERS = 1 if TRAINMODE else 3
+LIVES = 1 if TRAINMODE else 4
 XLENGTH = 15 if TRAINMODE else 40
 YLENGTH = 17 if TRAINMODE else 30
 AREA = XLENGTH * YLENGTH
@@ -140,7 +141,7 @@ class Entity:
         return self.__str__()
 
 class Piece:
-    def __init__(self, team, id, xy=None, dead=False, lives=4):
+    def __init__(self, team, id, xy=None, dead=False, lives=LIVES):
         self.team = team
         self.id = id
         self.dead = dead
@@ -197,8 +198,8 @@ class Command:
         self.xy = (xy.value if isinstance(xy, Dir) else xy)
 
 class Things:
-    def __init__(self, cList):
-        self.things = [[None for i in range(PLAYERS)] for j in range(TEAMS)]
+    def __init__(self, cList=[], placeholder=None):
+        self.things = [[placeholder for i in range(PLAYERS)] for j in range(TEAMS)]
         for c in cList:
             self.set(c)
     def get(self, thing):
@@ -237,7 +238,8 @@ class Board:
 
         self.statistics = {
             'died': { A: 0, B: 0 },
-            'taken': { A: 0, B: 0 }
+            'taken': { A: 0, B: 0 },
+            'stepped': {A: 0, B: 0}
         }
     
     def __iter__(self):
@@ -269,12 +271,13 @@ class Board:
         return self.map.get(xy)
 
     def move(self, commands):
+        self.turn += 1
+        self.reward = [[0 for _ in range(PLAYERS)] for _ in range(TEAMS)]
         # Move and respawn pieces
         for c in commands:
             p = self.pieces.get(c)
             if c.type==CType.wait:
                 continue
-            
             if p.dead:
                 if c.type==CType.respawn and isinstance(camp:=self.get(c.xy), Camp) and camp.team==p.team:
                     p.respawn(c.xy)
@@ -282,6 +285,7 @@ class Board:
                 if c.type==CType.move:
                     if not isinstance(self.get(p.xy), Camp):
                         self.set(Dot(p.team, p.id), p.xy)
+                        self.statistics['stepped'][p.team] += 1
                     p.xy += c.xy
                 else:
                     enemyCamp = XY(0,0)
@@ -304,6 +308,7 @@ class Board:
                     if DEBUG: print("Dot stepped: {}".format(str(p1.xy)))
                     toDie += [Entity(d.team, d.id)]
                     self.statistics['taken'][p1.team] += 1 if p1.team!=d.team else -1
+                    self.reward[p1.team][p1.id] += 10 if p1.team!=d.team else -10
                 
                 for p2 in self.pieces:
                     if p1 < p2 and not p2.dead and p1.xy==p2.xy:
@@ -311,11 +316,15 @@ class Board:
                         toDie += [Entity(p1.team, p1.id), Entity(p2.team, p2.id)]
         
         if DEBUG: print(toDie)
+        died = []
         for td in toDie:
-            self.pieces.get(td).kill()
-            for xy, d in self:
-                if isinstance(d, Dot) and d.team==td.team and d.id==td.id:
-                    self.set(Empty(), xy)        
+            if td not in died:
+                died += [td]
+                self.reward[td.team][td.id] -= 10
+                self.pieces.get(td).kill()
+                for xy, d in self:
+                    if isinstance(d, Dot) and d.team==td.team and d.id==td.id:
+                        self.set(Empty(), xy)        
         
         # Make new camps
         for p in self.pieces:
@@ -341,7 +350,9 @@ class Board:
                 valid, area = self.expandFrom(xy)
                 for newxy in area:
                     # self.checkeds.set(True, newxy)
-                    if valid: self.set(Camp(p.team), newxy)
+                    if valid:
+                        self.set(Camp(p.team), newxy)
+                        self.reward[p.team][p.id] += 2
 
     def expandFrom(self, xy):
         valid = True
@@ -397,17 +408,17 @@ class Board:
         # print(self.turn, camps)
 
         for team, count in camps.items():
-            if count >= AREA/2: return team, diff
+            if count >= AREA/2: return (team, diff)
         
         alive = { A:False, B: False }
         for p in self.pieces:
             if p.lives > 0:
                 alive[p.team] = True
-        if not alive[A]: return B, 0.25
-        if not alive[B]: return A, 0.25
+        if not alive[A]: return (B, 0.25)
+        if not alive[B]: return (A, 0.25)
         
         if self.turn >= MAXTURN:
-            return A, diff if camps[A] > camps[B] else B, diff
+            return (A, diff) if camps[A] > camps[B] else (B, diff)
 
         return None
 
