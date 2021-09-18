@@ -8,7 +8,7 @@ from itertools import zip_longest
 INTERVAL = 0
 DEBUG = False
 DRAW = False
-TRAINMODE = True
+TRAINMODE = False
 
 "●○◦⬤◯〇⦿·○〇〇◯ ⃝ ⬤ 🔴🔵〇●○"
 
@@ -198,8 +198,8 @@ class Command:
         self.xy = (xy.value if isinstance(xy, Dir) else xy)
 
 class Things:
-    def __init__(self, cList=[], placeholder=None):
-        self.things = [[placeholder for i in range(PLAYERS)] for j in range(TEAMS)]
+    def __init__(self, cList=[]):
+        self.things = [[None for i in range(PLAYERS)] for j in range(TEAMS)]
         for c in cList:
             self.set(c)
     def get(self, thing):
@@ -223,8 +223,8 @@ class Board:
                 self.set(Camp(B), mirror(XY(i,j)))
         
         self.pieces = Things([
-            Piece(A, 1, XY(3, 2)),
-            Piece(B, 1, mirror(XY(3, 2)))
+            Piece(A, 0, XY(3, 2)),
+            Piece(B, 0, mirror(XY(3, 2)))
         ]) \
         if TRAINMODE else \
         Things([
@@ -300,15 +300,20 @@ class Board:
                 if not inBoard(p1.xy):
                     if DEBUG: print("Adding {} to toDie because it's out of board.".format(str(p1)))
                     toDie += [Entity(p1.team, p1.id)]
-                elif isinstance(c:=self.get(p1.xy), Camp) and c.team!=p1.team:
-                    if DEBUG: print("Adding {} to toDie because it stepped enemy's camp.".format(str(p1)))
-                    toDie += [Entity(p1.team, p1.id)]
+                elif isinstance(c:=self.get(p1.xy), Camp):
+                    if c.team!=p1.team:
+                        toDie += [Entity(p1.team, p1.id)]
+                        if DEBUG: print("Adding {} to toDie because it stepped enemy's camp.".format(str(p1)))
+                    
                 elif isinstance(d:=self.get(p1.xy), Dot):
                     if DEBUG: print("Adding {} to toDie because its dot got stepped.".format(str(p1)))
                     if DEBUG: print("Dot stepped: {}".format(str(p1.xy)))
                     toDie += [Entity(d.team, d.id)]
                     self.statistics['taken'][p1.team] += 1 if p1.team!=d.team else -1
                     self.reward[p1.team][p1.id] += 10 if p1.team!=d.team else -10
+                elif isinstance(e:=self.get(p1.xy), Empty):
+                    self.reward[p1.team][p1.id] += 3
+                    
                 
                 for p2 in self.pieces:
                     if p1 < p2 and not p2.dead and p1.xy==p2.xy:
@@ -352,7 +357,7 @@ class Board:
                     # self.checkeds.set(True, newxy)
                     if valid:
                         self.set(Camp(p.team), newxy)
-                        self.reward[p.team][p.id] += 2
+                        self.reward[p.team][p.id] += 5
 
     def expandFrom(self, xy):
         valid = True

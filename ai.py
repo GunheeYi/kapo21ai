@@ -61,8 +61,8 @@ class Player():
         deads = []
         for p in board.pieces:
             if p.team == self.team:
-                if p.dead and p.lives > 0:
-                    deads += [p]
+                if p.dead:
+                    if p.lives > 0: deads += [p]
                 else:
                     pieces += [p]
         commands = []
