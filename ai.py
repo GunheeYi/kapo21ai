@@ -46,19 +46,15 @@ class KaPo21Net(nn.Module):
         return F.softmax(x, dim=1)
 
 class Player():
-    def __init__(self, team, filepath='model.pt', use_gpu=False):
+    def __init__(self, team, net, use_gpu=False):
         self.team = team
-        self.net = KaPo21Net()
-        if use_gpu:
-            self.net.load_state_dict(torch.load(filepath))
-        else:
-            self.net.load_state_dict(torch.load(filepath, map_location='cpu'))
+        self.net = net
         self.gpu = use_gpu
         if self.gpu:
             self.net.cuda()
         self.net.eval()
 
-    def call(self, board:Board, pieces, deads):
+    def call(self, board:Board):
         pieces = []
         deads = []
         for p in board.pieces:

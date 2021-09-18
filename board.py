@@ -268,9 +268,9 @@ class Board:
     def get(self, xy):
         return self.map.get(xy)
 
-    def move(self):
+    def move(self, commands):
         # Move and respawn pieces
-        for c in self.commands:
+        for c in commands:
             p = self.pieces.get(c)
             if c.type==CType.wait:
                 continue
@@ -392,7 +392,7 @@ class Board:
             for j in range(YLENGTH):
                 if isinstance(c:=self.get(XY(i,j)), Camp):
                     camps[c.team] += 1
-        diff = abs(camps[A]-camps[B])
+        diff = abs(camps[A]-camps[B])/AREA
 
         # print(self.turn, camps)
 
@@ -403,8 +403,8 @@ class Board:
         for p in self.pieces:
             if p.lives > 0:
                 alive[p.team] = True
-        if not alive[A]: return B, AREA/4
-        if not alive[B]: return A, AREA/4
+        if not alive[A]: return B, 0.25
+        if not alive[B]: return A, 0.25
         
         if self.turn >= MAXTURN:
             return A, diff if camps[A] > camps[B] else B, diff
